@@ -1,0 +1,1308 @@
+{
+  "datasets": [
+    {
+      "name": "4d8ecda4",
+      "displayName": "MRR Upgrades vs Losses",
+      "queryLines": [
+        "SELECT\n",
+        "  Month,\n",
+        "  ROUND(\n",
+        "    SUM(\n",
+        "      CASE\n",
+        "        WHEN close_status = 'Won' THEN mrr_in_gpb\n",
+        "        ELSE 0\n",
+        "      END\n",
+        "    ),\n",
+        "    2\n",
+        "  ) AS upselling_mrr,\n",
+        "  ROUND(\n",
+        "    SUM(\n",
+        "      CASE\n",
+        "        WHEN close_status = 'Lost' THEN mrr_in_gpb\n",
+        "        ELSE 0\n",
+        "      END\n",
+        "    ),\n",
+        "    2\n",
+        "  ) AS downselling_mrr\n",
+        "FROM\n",
+        "  subscription_analytics\n",
+        "GROUP BY\n",
+        "  Month\n",
+        "ORDER BY\n",
+        "  Month"
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    },
+    {
+      "name": "33138118",
+      "displayName": "Subscription Analytics",
+      "queryLines": [
+        "SELECT\n",
+        "  *\n",
+        "FROM\n",
+        "  subscription_analytics"
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    },
+    {
+      "name": "2823242b",
+      "displayName": "Rolling 12-Month MRR",
+      "queryLines": [
+        "SELECT\n",
+        "  Month,\n",
+        "  SUM(mrr_in_gpb) AS monthly_mrr,\n",
+        "  SUM(SUM(mrr_in_gpb)) OVER (\n",
+        "      ORDER BY Month\n",
+        "      ROWS BETWEEN 11 PRECEDING AND CURRENT ROW\n",
+        "    ) AS rolling_12_month_mrr\n",
+        "FROM\n",
+        "  subscription_analytics\n",
+        "GROUP BY\n",
+        "  Month\n",
+        "ORDER BY\n",
+        "  Month"
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    },
+    {
+      "name": "359fe324",
+      "displayName": "Top Downselling Customers",
+      "queryLines": [
+        "WITH customer_events AS (\n",
+        "  SELECT\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month,\n",
+        "    COUNT(DISTINCT product_id) AS product_count\n",
+        "  FROM\n",
+        "    subscription_analytics\n",
+        "  WHERE\n",
+        "    close_status = 'Lost'\n",
+        "  GROUP BY\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month\n",
+        "),\n",
+        "downselling_per_month AS (\n",
+        "  SELECT\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month,\n",
+        "    SUM(product_count) OVER (\n",
+        "        PARTITION BY customer_id, customer_name\n",
+        "        ORDER BY Month\n",
+        "      ) AS total_products_reduced,\n",
+        "    ROW_NUMBER() OVER (PARTITION BY customer_id, customer_name ORDER BY Month DESC) AS rn\n",
+        "  FROM\n",
+        "    customer_events\n",
+        ")\n",
+        "SELECT\n",
+        "  customer_name,\n",
+        "  total_products_reduced\n",
+        "FROM\n",
+        "  downselling_per_month\n",
+        "WHERE\n",
+        "  rn = 1\n",
+        "ORDER BY\n",
+        "  total_products_reduced DESC\n",
+        "LIMIT 10"
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    },
+    {
+      "name": "b858fdc2",
+      "displayName": "Top Upselling Customers",
+      "queryLines": [
+        "WITH customer_events AS (\n",
+        "  SELECT\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month,\n",
+        "    COUNT(DISTINCT product_id) AS product_count\n",
+        "  FROM\n",
+        "    subscription_analytics\n",
+        "  WHERE\n",
+        "    close_status = 'Won'\n",
+        "  GROUP BY\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month\n",
+        "),\n",
+        "upselling_per_month AS (\n",
+        "  SELECT\n",
+        "    customer_id,\n",
+        "    customer_name,\n",
+        "    Month,\n",
+        "    SUM(product_count) OVER (\n",
+        "        PARTITION BY customer_id, customer_name\n",
+        "        ORDER BY Month\n",
+        "      ) AS total_products_added,\n",
+        "    ROW_NUMBER() OVER (PARTITION BY customer_id, customer_name ORDER BY Month DESC) AS rn\n",
+        "  FROM\n",
+        "    customer_events\n",
+        ")\n",
+        "SELECT\n",
+        "  customer_name,\n",
+        "  total_products_added\n",
+        "FROM\n",
+        "  upselling_per_month\n",
+        "WHERE\n",
+        "  rn = 1\n",
+        "ORDER BY\n",
+        "  total_products_added DESC\n",
+        "LIMIT 10"
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    },
+    {
+      "name": "25f7b736",
+      "displayName": "Top 10 Products by Revenue",
+      "queryLines": [
+        "SELECT\n",
+        "  product_name,\n",
+        "  SUM(revenue_in_gpb) AS total_revenue\n",
+        "FROM\n",
+        "  subscription_analytics\n",
+        "GROUP BY\n",
+        "  product_name\n",
+        "ORDER BY\n",
+        "  total_revenue DESC\n",
+        "LIMIT 10"
+      ],
+      "columns": [
+        {
+          "displayName": "Product Code",
+          "description": "Short product code without CRM Module prefix",
+          "expression": "REPLACE(`product_name`, 'CRM Module ', '')"
+        }
+      ],
+      "catalog": "subscription_catalog",
+      "schema": "gold"
+    }
+  ],
+  "pages": [
+    {
+      "name": "5118196f",
+      "displayName": "Executive Summary",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Subscription Analytics — Executive Summary"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "total_revenue",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "sum(revenue_in_gpb)",
+                      "expression": "SUM(`revenue_in_gpb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Revenue (GBP)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(revenue_in_gpb)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "GBP",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Total Revenue"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "total_mrr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "sum(mrr_in_gpb)",
+                      "expression": "SUM(`mrr_in_gpb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total MRR (GBP)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "sum(mrr_in_gpb)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "GBP",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 1
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Total MRR"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 1,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "total_customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "countdistinct(customer_id)",
+                      "expression": "COUNT(DISTINCT `customer_id`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Customers",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(customer_id)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Total Customers"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 1,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "active_customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "countdistinct(customer_id)",
+                      "expression": "COUNT(DISTINCT `customer_id`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`close_status` IN ('Active')"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Active Customers",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "countdistinct(customer_id)",
+                  "format": {
+                    "type": "number-plain",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Active Customers"
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 9,
+            "y": 1,
+            "width": 3,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_trend",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "close_status",
+                      "expression": "`close_status`"
+                    },
+                    {
+                      "name": "Month",
+                      "expression": "`Month`"
+                    },
+                    {
+                      "name": "sum(revenue_in_gpb)",
+                      "expression": "SUM(`revenue_in_gpb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Monthly Revenue Trend (GBP)",
+                "showTitle": true
+              },
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "Month",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Month",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(revenue_in_gpb)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "GBP",
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Revenue (GBP)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "close_status",
+                  "legend": {
+                    "position": "bottom"
+                  },
+                  "displayName": "Status",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Active",
+                        "color": "#3B6B9E"
+                      },
+                      {
+                        "value": "Won",
+                        "color": "#5A9E6F"
+                      },
+                      {
+                        "value": "Lost",
+                        "color": "#A3896B"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 3,
+            "width": 8,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "customer_status",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "countdistinct(customer_id)",
+                      "expression": "COUNT(DISTINCT `customer_id`)"
+                    },
+                    {
+                      "name": "close_status",
+                      "expression": "`close_status`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Customers by Status",
+                "showTitle": true
+              },
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "countdistinct(customer_id)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Customer Count"
+                },
+                "color": {
+                  "fieldName": "close_status",
+                  "legend": {
+                    "position": "bottom"
+                  },
+                  "displayName": "Status",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Active",
+                        "color": "#3B6B9E"
+                      },
+                      {
+                        "value": "Won",
+                        "color": "#5A9E6F"
+                      },
+                      {
+                        "value": "Lost",
+                        "color": "#A3896B"
+                      }
+                    ]
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 3,
+            "width": 4,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_by_product",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "25f7b736",
+                  "fields": [
+                    {
+                      "name": "sum(total_revenue)",
+                      "expression": "SUM(`total_revenue`)"
+                    },
+                    {
+                      "name": "Product Code",
+                      "expression": "`Product Code`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Top 10 Products by Revenue",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Product Code",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Product Code",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_revenue)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "GBP",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "displayName": "Revenue (GBP)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sum(total_revenue)",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Revenue (GBP)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "revenue_by_plan",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "sum(revenue_in_gpb)",
+                      "expression": "SUM(`revenue_in_gpb`)"
+                    },
+                    {
+                      "name": "plan_name",
+                      "expression": "`plan_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Revenue by Plan",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "plan_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Plan",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(revenue_in_gpb)",
+                  "format": {
+                    "type": "number-currency",
+                    "currencyCode": "GBP",
+                    "decimalPlaces": {
+                      "type": "exact",
+                      "places": 0
+                    },
+                    "abbreviation": "compact"
+                  },
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Revenue (GBP)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sum(revenue_in_gpb)",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Revenue (GBP)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 8,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "deep_dive",
+      "displayName": "Revenue & Customer Deep Dive",
+      "layout": [
+        {
+          "widget": {
+            "name": "title",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Revenue & Customer Deep Dive"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "rolling_mrr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "2823242b",
+                  "fields": [
+                    {
+                      "name": "Month",
+                      "expression": "`Month`"
+                    },
+                    {
+                      "name": "sum(monthly_mrr)",
+                      "expression": "SUM(`monthly_mrr`)"
+                    },
+                    {
+                      "name": "sum(rolling_12_month_mrr)",
+                      "expression": "SUM(`rolling_12_month_mrr`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Rolling 12-Month MRR vs Monthly MRR",
+                "showTitle": true
+              },
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "Month",
+                  "displayName": "Month",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(monthly_mrr)",
+                        "displayName": "Monthly MRR"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(rolling_12_month_mrr)",
+                        "displayName": "Rolling 12-Month MRR"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                },
+                "color": {
+                  "legend": {
+                    "position": "bottom"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "downselling",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "359fe324",
+                  "fields": [
+                    {
+                      "name": "sum(total_products_reduced)",
+                      "expression": "SUM(`total_products_reduced`)"
+                    },
+                    {
+                      "name": "customer_name",
+                      "expression": "`customer_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Top 10 Downselling Customers",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "customer_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Customer",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_products_reduced)",
+                  "displayName": "Products Reduced",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sum(total_products_reduced)",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Products Reduced",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "upselling",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "b858fdc2",
+                  "fields": [
+                    {
+                      "name": "sum(total_products_added)",
+                      "expression": "SUM(`total_products_added`)"
+                    },
+                    {
+                      "name": "customer_name",
+                      "expression": "`customer_name`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Top 10 Upselling Customers",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "customer_name",
+                  "axis": {
+                    "hideTitle": true
+                  },
+                  "displayName": "Customer",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(total_products_added)",
+                  "displayName": "Products Added",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "sum(total_products_added)",
+                  "legend": {
+                    "hide": true
+                  },
+                  "displayName": "Products Added",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "label": {
+                  "show": true
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 6,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "mrr_comparison",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4d8ecda4",
+                  "fields": [
+                    {
+                      "name": "Month",
+                      "expression": "`Month`"
+                    },
+                    {
+                      "name": "sum(upselling_mrr)",
+                      "expression": "SUM(`upselling_mrr`)"
+                    },
+                    {
+                      "name": "sum(downselling_mrr)",
+                      "expression": "SUM(`downselling_mrr`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Upselling vs Downselling MRR by Month",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "Month",
+                  "displayName": "Month",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(upselling_mrr)",
+                        "displayName": "Upselling MRR"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(downselling_mrr)",
+                        "displayName": "Downselling MRR"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                },
+                "color": {
+                  "legend": {
+                    "position": "bottom"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 11,
+            "width": 6,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "top_customers_mrr",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "customer_name",
+                      "expression": "`customer_name`"
+                    },
+                    {
+                      "name": "sum(mrr_in_gpb)",
+                      "expression": "SUM(`mrr_in_gpb`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Top Customers by Recurring Revenue",
+                "showTitle": true
+              },
+              "rowsPerPage": 25,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "customer_name",
+                    "displayName": "Customer"
+                  },
+                  {
+                    "fieldName": "sum(mrr_in_gpb)",
+                    "displayName": "Total MRR (GBP)"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 11,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "global_filters",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "product_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_product_name",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "product_name",
+                      "expression": "`product_name`"
+                    },
+                    {
+                      "name": "product_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Product",
+                "showTitle": true
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_name",
+                    "queryName": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_product_name"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "plan_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_plan_name",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "plan_name",
+                      "expression": "`plan_name`"
+                    },
+                    {
+                      "name": "plan_name_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Plan",
+                "showTitle": true
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "plan_name",
+                    "queryName": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_plan_name"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "status_filter",
+            "queries": [
+              {
+                "name": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_close_status",
+                "query": {
+                  "datasetName": "33138118",
+                  "fields": [
+                    {
+                      "name": "close_status",
+                      "expression": "`close_status`"
+                    },
+                    {
+                      "name": "close_status_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Status",
+                "showTitle": true,
+                "showDescription": true
+              },
+              "widgetType": "filter-multi-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "close_status",
+                    "queryName": "dashboards/01f1298fdc981e3f80258281f9c364e5/datasets/01f12990780117a7bc04aaeea9b2abbc_close_status"
+                  }
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 0,
+            "width": 4,
+            "height": 1
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "canvasBackgroundColor": {
+        "light": "#F7F8FA",
+        "dark": "#1B1F23"
+      },
+      "widgetBackgroundColor": {
+        "light": "#FFFFFF",
+        "dark": "#242A30"
+      },
+      "widgetBorderColor": {
+        "light": "#E4E7EB",
+        "dark": "#353D45"
+      },
+      "fontColor": {
+        "light": "#2D3748",
+        "dark": "#E2E8F0"
+      },
+      "selectionColor": {
+        "light": "#3B6B9E",
+        "dark": "#5A9ABF"
+      },
+      "visualizationColors": [
+        "#2E5A88",
+        "#4E8C5E",
+        "#7A6DAA",
+        "#C0834F",
+        "#4A9CB8",
+        "#8E7B5E",
+        "#6B8EA5",
+        "#5E7F5E",
+        "#8D7E9F",
+        "#B08D72"
+      ],
+      "widgetHeaderAlignment": "LEFT",
+      "fontFamily": "Trebuchet MS"
+    },
+    "applyModeEnabled": false
+  }
+}
