@@ -1,0 +1,38 @@
+resources:
+  jobs:
+    subscription_analytics_daily_etl:
+      name: subscription_analytics_daily_etl
+      tasks:
+        - task_key: Data_Ingestion
+          email_notifications: {}
+          run_if: ALL_SUCCESS
+          run_job_task:
+            job_id: 352766853029677
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Data_Transformation
+          depends_on:
+            - task_key: Data_Ingestion
+          email_notifications: {}
+          run_if: ALL_SUCCESS
+          run_job_task:
+            job_id: 180772462186597
+          timeout_seconds: 0
+          webhook_notifications: {}
+        - task_key: Data_Modelling
+          depends_on:
+            - task_key: Data_Transformation
+          email_notifications: {}
+          run_if: ALL_SUCCESS
+          run_job_task:
+            job_id: 769033282770602
+          timeout_seconds: 0
+          webhook_notifications: {}
+      email_notifications:
+        no_alert_for_skipped_runs: false
+      max_concurrent_runs: 1
+      performance_target: PERFORMANCE_OPTIMIZED
+      queue:
+        enabled: true
+      timeout_seconds: 0
+      webhook_notifications: {}
